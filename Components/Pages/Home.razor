@@ -2,6 +2,36 @@
 
 <PageTitle>Home</PageTitle>
 
-<h1>Hello, world!</h1>
+<div class="container mt-5">
+    <div class="card shadow-sm">
+        <div class="card-header bg-primary text-white">
+            <h2 class="mb-0">Welcome to AI-Chatbot</h2>
+        </div>
+        <div class="card-body">
+            <div class="mb-4">
+                <label for="fileUpload" class="form-label">Upload File:</label>
+                <input type="file" id="fileUpload" class="form-control" @onchange="HandleFileSelected" />
+            </div>
 
-Welcome to your new app.
+            <div class="mb-4">
+                <label for="textBox" class="form-label">Enter Your Question:</label>
+                <textarea id="textBox" class="form-control" @bind="InputText" placeholder="Type something..." rows="5"></textarea>
+            </div>
+
+            <button class="btn btn-primary">Submit</button>
+        </div>
+    </div>
+</div>
+
+@code {
+    private string? InputText;
+
+    private async Task HandleFileSelected(ChangeEventArgs e)
+    {
+        if (e.Value is not null)
+        {
+            // Handle file upload logic here
+            await Task.CompletedTask;
+        }
+    }
+}
