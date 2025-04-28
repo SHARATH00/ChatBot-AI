@@ -9,29 +9,132 @@
         </div>
         <div class="card-body">
             <div class="mb-4">
-                <label for="fileUpload" class="form-label">Upload File:</label>
-                <input type="file" id="fileUpload" class="form-control" @onchange="HandleFileSelected" />
+                <label for="fileUpload" class="form-label">Upload CSV File:</label>
+                <InputFile OnChange="HandleFileSelected" class="form-control" />
             </div>
 
             <div class="mb-4">
                 <label for="textBox" class="form-label">Enter Your Question:</label>
-                <textarea id="textBox" class="form-control" @bind="InputText" placeholder="Type something..." rows="5"></textarea>
+                <textarea id="textBox" class="form-control" @bind="InputText" placeholder="Type your question..." rows="5"></textarea>
             </div>
 
-            <button class="btn btn-primary">Submit</button>
+            <button class="btn btn-primary" @onclick="SubmitQuestion">Submit</button>
         </div>
     </div>
 </div>
 
 @code {
     private string? InputText;
+    private IBrowserFile? UploadedFile;
 
-    private async Task HandleFileSelected(ChangeEventArgs e)
+    private async Task HandleFileSelected(InputFileChangeEventArgs e)
     {
-        if (e.Value is not null)
+        UploadedFile = e.File;
+        if (UploadedFile != null)
         {
-            // Handle file upload logic here
-            await Task.CompletedTask;
+            // Read the file content
+            using var stream = UploadedFile.OpenReadStream();
+            using var reader = new StreamReader(stream);
+            var csvContent = await reader.ReadToEndAsync();
+
+            // Process the CSV content
+            await ProcessCsvFile(csvContent);
+        }
+    }
+
+    private async Task ProcessCsvFile(string csvContent)
+    {
+        // Parse CSV and create table in PostgreSQL
+        var lines = csvContent.Split('\n');
+        if (lines.Length > 0)
+        {
+            var headers = lines[0].Split(',');
+
+            // Create table in PostgreSQL
+            await CreatePostgresTable(headers);
+
+            // Insert data into PostgreSQL
+            for (int i = 1; i < lines.Length; i++)
+            {
+                var row = lines[i].Split(',');
+                await InsertRowIntoPostgres(headers, row);
+            }
+        }
+    }
+
+    private async Task CreatePostgresTable(string[] headers)
+    {
+        // Define table creation logic
+        var tableName = "UploadedData";
+        var columns = string.Join(", ", headers.Select(h => $"{h.Trim()} TEXT"));
+
+        var query = $"CREATE TABLE IF NOT EXISTS {tableName} ({columns});";
+
+        using var connection = new Npgsql.NpgsqlConnection("Your_Postgres_Connection_String");
+        await connection.OpenAsync();
+
+        using var command = new Npgsql.NpgsqlCommand(query, connection);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private async Task InsertRowIntoPostgres(string[] headers, string[] row)
+    {
+        var tableName = "UploadedData";
+        var columns = string.Join(", ", headers.Select(h => h.Trim()));
+        var values = string.Join(", ", row.Select(r => $"'{r.Trim()}'"));
+
+        var query = $"INSERT INTO {tableName} ({columns}) VALUES ({values});";
+
+        using var connection = new Npgsql.NpgsqlConnection("Your_Postgres_Connection_String");
+        await connection.OpenAsync();
+
+        using var command = new Npgsql.NpgsqlCommand(query, connection);
+        await command.ExecuteNonQueryAsync();
+    }
+
+    private async Task SubmitQuestion()
+    {
+        if (!string.IsNullOrWhiteSpace(InputText))
+        {
+            // Use OpenAI API to process the question
+            var response = await QueryOpenAi(InputText);
+
+            // Query PostgreSQL based on the response
+            await QueryPostgres(response);
+        }
+    }
+
+    private async Task<string> QueryOpenAi(string question)
+    {
+        // Call OpenAI API
+        var apiKey = "Your_OpenAI_API_Key";
+        var client = new HttpClient();
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+
+        var requestBody = new
+        {
+            model = "text-davinci-003",
+            prompt = question,
+            max_tokens = 100
+        };
+
+        var response = await client.PostAsJsonAsync("https://api.openai.com/v1/completions", requestBody);
+        var result = await response.Content.ReadFromJsonAsync<dynamic>();
+
+        return result?.choices[0]?.text?.ToString() ?? string.Empty;
+    }
+
+    private async Task QueryPostgres(string query)
+    {
+        using var connection = new Npgsql.NpgsqlConnection("Your_Postgres_Connection_String");
+        await connection.OpenAsync();
+
+        using var command = new Npgsql.NpgsqlCommand(query, connection);
+        using var reader = await command.ExecuteReaderAsync();
+
+        while (await reader.ReadAsync())
+        {
+            // Process query results
         }
     }
 }
