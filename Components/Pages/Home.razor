@@ -9,9 +9,25 @@
         </div>
         <div class="card-body">
             <div class="mb-4">
-                <label for="fileUpload" class="form-label">Upload CSV File:</label>
-                <InputFile OnChange="HandleFileSelected" class="form-control" />
+                <label class="form-label">Upload CSV File:</label>
+                <div>
+                    <button class="btn btn-secondary me-2" @onclick="SelectFile">Select File</button>
+                    <button class="btn btn-primary" @onclick="CreateDatabaseTables">Upload</button>
+                </div>
+                @if (!string.IsNullOrEmpty(SelectedFileName))
+                {
+                    <div class="mt-2">
+                        <strong>Selected File:</strong> @SelectedFileName
+                    </div>
+                }
+                @if (!string.IsNullOrEmpty(SuccessMessage))
+                {
+                    <div class="mt-2 alert alert-success">
+                        @SuccessMessage
+                    </div>
+                }
             </div>
+
 
             <div class="mb-4">
                 <label for="textBox" class="form-label">Enter Your Question:</label>
@@ -26,23 +42,49 @@
 @code {
     private string? InputText;
     private IBrowserFile? UploadedFile;
+    private string? SelectedFileName;
+    private string? SuccessMessage;
 
-    private async Task HandleFileSelected(InputFileChangeEventArgs e)
+    private async Task SelectFile()
     {
-        UploadedFile = e.File;
+        // Simulate file selection (Blazor does not allow direct file selection without InputFile)
+        Console.WriteLine("SelectFile function is executing.");
+        SuccessMessage = "File selection is not implemented in this simplified UI.";
+    }
+
+    private void CreateDatabaseTables()
+    {
         if (UploadedFile != null)
         {
-            // Read the file content
-            using var stream = UploadedFile.OpenReadStream();
-            using var reader = new StreamReader(stream);
-            var csvContent = await reader.ReadToEndAsync();
+            try
+            {
+                // Log to the console
+                Console.WriteLine("CreateDatabaseTables function is executing.");
 
-            // Process the CSV content
-            await ProcessCsvFile(csvContent);
+                // Read the file content
+                using var stream = UploadedFile.OpenReadStream();
+                using var reader = new StreamReader(stream);
+                var csvContent = reader.ReadToEnd();
+
+                // Process the CSV content
+                ProcessCsvFile(csvContent);
+
+                // Set success message
+                SuccessMessage = "Tables created successfully!";
+            }
+            catch (Exception ex)
+            {
+                // Handle errors (optional)
+                SuccessMessage = $"Error: {ex.Message}";
+            }
+        }
+        else
+        {
+            SuccessMessage = "Please select a file before uploading.";
         }
     }
 
-    private async Task ProcessCsvFile(string csvContent)
+    private void ProcessCsvFile(string csvContent)
     {
         // Parse CSV and create table in PostgreSQL
         var lines = csvContent.Split('\n');
@@ -51,18 +93,18 @@
             var headers = lines[0].Split(',');
 
             // Create table in PostgreSQL
-            await CreatePostgresTable(headers);
+            CreatePostgresTable(headers);
 
             // Insert data into PostgreSQL
             for (int i = 1; i < lines.Length; i++)
             {
                 var row = lines[i].Split(',');
-                await InsertRowIntoPostgres(headers, row);
+                InsertRowIntoPostgres(headers, row);
             }
         }
     }
 
-    private async Task CreatePostgresTable(string[] headers)
+    private void CreatePostgresTable(string[] headers)
     {
         // Define table creation logic
         var tableName = "UploadedData";
@@ -70,14 +112,14 @@
 
         var query = $"CREATE TABLE IF NOT EXISTS {tableName} ({columns});";
 
-        using var connection = new Npgsql.NpgsqlConnection("Your_Postgres_Connection_String");
-        await connection.OpenAsync();
+        using var connection = new Npgsql.NpgsqlConnection(GetConnectionString());
+        connection.Open();
 
         using var command = new Npgsql.NpgsqlCommand(query, connection);
-        await command.ExecuteNonQueryAsync();
+        command.ExecuteNonQuery();
     }
 
-    private async Task InsertRowIntoPostgres(string[] headers, string[] row)
+    private void InsertRowIntoPostgres(string[] headers, string[] row)
     {
         var tableName = "UploadedData";
         var columns = string.Join(", ", headers.Select(h => h.Trim()));
@@ -85,26 +127,26 @@
 
         var query = $"INSERT INTO {tableName} ({columns}) VALUES ({values});";
 
-        using var connection = new Npgsql.NpgsqlConnection("Your_Postgres_Connection_String");
-        await connection.OpenAsync();
+        using var connection = new Npgsql.NpgsqlConnection(GetConnectionString());
+        connection.Open();
 
         using var command = new Npgsql.NpgsqlCommand(query, connection);
-        await command.ExecuteNonQueryAsync();
+        command.ExecuteNonQuery();
     }
 
-    private async Task SubmitQuestion()
+    private void SubmitQuestion()
     {
         if (!string.IsNullOrWhiteSpace(InputText))
         {
             // Use OpenAI API to process the question
-            var response = await QueryOpenAi(InputText);
+            var response = QueryOpenAi(InputText);
 
             // Query PostgreSQL based on the response
-            await QueryPostgres(response);
+            QueryPostgres(response);
         }
     }
 
-    private async Task<string> QueryOpenAi(string question)
+    private string QueryOpenAi(string question)
     {
         // Call OpenAI API
         var apiKey = "Your_OpenAI_API_Key";
@@ -118,23 +160,33 @@
             max_tokens = 100
         };
 
-        var response = await client.PostAsJsonAsync("https://api.openai.com/v1/completions", requestBody);
-        var result = await response.Content.ReadFromJsonAsync<dynamic>();
+        var response = client.PostAsJsonAsync("https://api.openai.com/v1/completions", requestBody).Result;
+        var result = response.Content.ReadFromJsonAsync<dynamic>().Result;
 
         return result?.choices[0]?.text?.ToString() ?? string.Empty;
     }
 
-    private async Task QueryPostgres(string query)
+    private void QueryPostgres(string query)
     {
-        using var connection = new Npgsql.NpgsqlConnection("Your_Postgres_Connection_String");
-        await connection.OpenAsync();
+        using var connection = new Npgsql.NpgsqlConnection(GetConnectionString());
+        connection.Open();
 
         using var command = new Npgsql.NpgsqlCommand(query, connection);
-        using var reader = await command.ExecuteReaderAsync();
+        using var reader = command.ExecuteReader();
 
-        while (await reader.ReadAsync())
+        while (reader.Read())
         {
             // Process query results
         }
     }
+
+    @inject IConfiguration Configuration
+
+    private string GetConnectionString()
+    {
+        return Configuration.GetConnectionString("PostgresConnection");
+    }
 }
+
+
+
