@@ -7,7 +7,7 @@
 
 <div>
     <InputFile OnChange="LoadFiles" multiple />
-    <button @onclick="CreateDatabaseTables">Submit</button>
+    <button @onclick="CreateDatabaseTablesAsync">Submit</button>
 </div>
 
 <div>
@@ -27,10 +27,14 @@
 
     private void LoadFiles(InputFileChangeEventArgs e)
     {
+        // Set the UploadedFile to the first selected file
+        UploadedFile = e.File;
 
+        // Extract and sanitize the file name to use as the table name
+        SelectedFileName = SanitizeFileName(UploadedFile.Name);
     }
 
-    private void CreateDatabaseTables() 
+    private async void CreateDatabaseTablesAsync() 
     {
 
         
@@ -42,7 +46,7 @@
                 // Read the file content
                 using var stream = UploadedFile.OpenReadStream();
                 using var reader = new StreamReader(stream);
-                var csvContent = reader.ReadToEnd();
+                var csvContent = await reader.ReadToEndAsync();
 
                 // Process the CSV content
                 ProcessCsvFile(csvContent);
@@ -87,7 +91,7 @@
     private void CreatePostgresTable(string[] headers)
     {
         // Define table creation logic
-        var tableName = "UploadedData";
+        var tableName = SelectedFileName ?? "UploadedData";
         var columns = string.Join(", ", headers.Select(h => $"{h.Trim()} TEXT"));
 
         var query = $"CREATE TABLE IF NOT EXISTS {tableName} ({columns});";
@@ -101,7 +105,7 @@
 
     private void InsertRowIntoPostgres(string[] headers, string[] row)
     {
-        var tableName = "UploadedData";
+        var tableName = SelectedFileName ?? "UploadedData";
         var columns = string.Join(", ", headers.Select(h => h.Trim()));
         var values = string.Join(", ", row.Select(r => $"'{r.Trim()}'"));
 
@@ -114,6 +118,12 @@
         command.ExecuteNonQuery();
     }
 
+    private string SanitizeFileName(string fileName)
+    {
+        // Remove special characters and replace spaces with underscores
+        var sanitized = new string(fileName.Where(c => char.IsLetterOrDigit(c) || c == '_').ToArray());
+        return sanitized.Replace(" ", "_");
+    }
 
 
     @inject IConfiguration Configuration
