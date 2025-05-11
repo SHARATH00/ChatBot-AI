@@ -1,61 +1,39 @@
 ﻿@page "/"
+@rendermode InteractiveServer
 
 <PageTitle>Home</PageTitle>
 
-<div class="container mt-5">
-    <div class="card shadow-sm">
-        <div class="card-header bg-primary text-white">
-            <h2 class="mb-0">Welcome to AI-Chatbot</h2>
-        </div>
-        <div class="card-body">
-            <div class="mb-4">
-                <label class="form-label">Upload CSV File:</label>
-                <div>
-                    <button class="btn btn-secondary me-2" @onclick="SelectFile">Select File</button>
-                    <button class="btn btn-primary" @onclick="CreateDatabaseTables">Upload</button>
-                </div>
-                @if (!string.IsNullOrEmpty(SelectedFileName))
-                {
-                    <div class="mt-2">
-                        <strong>Selected File:</strong> @SelectedFileName
-                    </div>
-                }
-                @if (!string.IsNullOrEmpty(SuccessMessage))
-                {
-                    <div class="mt-2 alert alert-success">
-                        @SuccessMessage
-                    </div>
-                }
-            </div>
+<h1>AI ChatBot</h1>
 
-
-            <div class="mb-4">
-                <label for="textBox" class="form-label">Enter Your Question:</label>
-                <textarea id="textBox" class="form-control" @bind="InputText" placeholder="Type your question..." rows="5"></textarea>
-            </div>
-
-            <button class="btn btn-primary" @onclick="SubmitQuestion">Submit</button>
-        </div>
-    </div>
+<div>
+    <InputFile OnChange="LoadFiles" multiple />
+    <button @onclick="CreateDatabaseTables">Submit</button>
 </div>
 
+<div>
+    <textarea id="textBox" class="form-control" @bind="InputText"  placeholder="Type your question..." rows="5"></textarea>
+    <button @onclick="SubmitQuestion">Ask</button>
+</div>
+
+
+
 @code {
-    private string? InputText;
+
+    private string InputText = null;
     private IBrowserFile? UploadedFile;
     private string? SelectedFileName;
     private string? SuccessMessage;
 
-    private async Task SelectFile()
+
+    private void LoadFiles(InputFileChangeEventArgs e)
     {
-        // Simulate file selection (Blazor does not allow direct file selection without InputFile)
-        Console.WriteLine("SelectFile function is executing.");
-        SuccessMessage = "File selection is not implemented in this simplified UI.";
+
     }
 
-    private void CreateDatabaseTables()
+    private void CreateDatabaseTables() 
     {
-        if (UploadedFile != null)
-        {
+
+        
             try
             {
                 // Log to the console
@@ -77,12 +55,13 @@
                 // Handle errors (optional)
                 SuccessMessage = $"Error: {ex.Message}";
             }
-        }
-        else
-        {
-            SuccessMessage = "Please select a file before uploading.";
-        }
+        
+
+
     }
+
+   
+
 
     private void ProcessCsvFile(string csvContent)
     {
@@ -103,6 +82,7 @@
             }
         }
     }
+
 
     private void CreatePostgresTable(string[] headers)
     {
@@ -134,51 +114,7 @@
         command.ExecuteNonQuery();
     }
 
-    private void SubmitQuestion()
-    {
-        if (!string.IsNullOrWhiteSpace(InputText))
-        {
-            // Use OpenAI API to process the question
-            var response = QueryOpenAi(InputText);
 
-            // Query PostgreSQL based on the response
-            QueryPostgres(response);
-        }
-    }
-
-    private string QueryOpenAi(string question)
-    {
-        // Call OpenAI API
-        var apiKey = "Your_OpenAI_API_Key";
-        var client = new HttpClient();
-        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-
-        var requestBody = new
-        {
-            model = "text-davinci-003",
-            prompt = question,
-            max_tokens = 100
-        };
-
-        var response = client.PostAsJsonAsync("https://api.openai.com/v1/completions", requestBody).Result;
-        var result = response.Content.ReadFromJsonAsync<dynamic>().Result;
-
-        return result?.choices[0]?.text?.ToString() ?? string.Empty;
-    }
-
-    private void QueryPostgres(string query)
-    {
-        using var connection = new Npgsql.NpgsqlConnection(GetConnectionString());
-        connection.Open();
-
-        using var command = new Npgsql.NpgsqlCommand(query, connection);
-        using var reader = command.ExecuteReader();
-
-        while (reader.Read())
-        {
-            // Process query results
-        }
-    }
 
     @inject IConfiguration Configuration
 
@@ -186,7 +122,13 @@
     {
         return Configuration.GetConnectionString("PostgresConnection");
     }
+
+    private void SubmitQuestion()
+    {
+
+    }
+
+
+
+
 }
-
-
-
