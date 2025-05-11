@@ -21,17 +21,18 @@
 
     private string InputText = null;
     private IBrowserFile? UploadedFile;
+    private List<IBrowserFile> UploadedFiles = new();
     private string? SelectedFileName;
     private string? SuccessMessage;
 
 
     private void LoadFiles(InputFileChangeEventArgs e)
     {
-        // Set the UploadedFile to the first selected file
-        UploadedFile = e.File;
 
-        // Extract and sanitize the file name to use as the table name
-        SelectedFileName = SanitizeFileName(UploadedFile.Name);
+        // Store all selected files
+        UploadedFiles = e.GetMultipleFiles().ToList();
+
+
     }
 
     private async void CreateDatabaseTablesAsync() 
@@ -43,13 +44,20 @@
                 // Log to the console
                 Console.WriteLine("CreateDatabaseTables function is executing.");
 
-                // Read the file content
-                using var stream = UploadedFile.OpenReadStream();
-                using var reader = new StreamReader(stream);
-                var csvContent = await reader.ReadToEndAsync();
+                foreach (var file in UploadedFiles)
+                {
+                    // Extract and sanitize the file name to use as the table name
+                    var sanitizedFileName = SanitizeFileName(file.Name);
 
-                // Process the CSV content
-                ProcessCsvFile(csvContent);
+
+                        // Read the file content
+                        using var stream = file.OpenReadStream();
+                        using var reader = new StreamReader(stream);
+                        var csvContent = await reader.ReadToEndAsync();
+
+                        // Process the CSV content
+                    ProcessCsvFile(csvContent, sanitizedFileName);
+                }
 
                 // Set success message
                 SuccessMessage = "Tables created successfully!";
@@ -67,7 +75,7 @@
    
 
 
-    private void ProcessCsvFile(string csvContent)
+    private void ProcessCsvFile(string csvContent, string tableName)
     {
         // Parse CSV and create table in PostgreSQL
         var lines = csvContent.Split('\n');
@@ -76,36 +84,56 @@
             var headers = lines[0].Split(',');
 
             // Create table in PostgreSQL
-            CreatePostgresTable(headers);
+            CreatePostgresTable(headers, tableName);
 
             // Insert data into PostgreSQL
             for (int i = 1; i < lines.Length; i++)
             {
                 var row = lines[i].Split(',');
-                InsertRowIntoPostgres(headers, row);
+
+                // Skip empty rows (e.g., the last row in the file)
+                if (row.All(string.IsNullOrWhiteSpace))
+                {
+                    continue;
+                }
+
+                InsertRowIntoPostgres(headers, row, tableName);
             }
         }
     }
 
 
-    private void CreatePostgresTable(string[] headers)
+    private void CreatePostgresTable(string[] headers, string tableName)
     {
         // Define table creation logic
-        var tableName = SelectedFileName ?? "UploadedData";
+
         var columns = string.Join(", ", headers.Select(h => $"{h.Trim()} TEXT"));
 
-        var query = $"CREATE TABLE IF NOT EXISTS {tableName} ({columns});";
+        // Query to drop the table if it already exists
+        var dropTableQuery = $"DROP TABLE IF EXISTS {tableName};";
+
+        // Query to create the table
+        var createTableQuery = $"CREATE TABLE IF NOT EXISTS {tableName} ({columns});";
 
         using var connection = new Npgsql.NpgsqlConnection(GetConnectionString());
         connection.Open();
 
-        using var command = new Npgsql.NpgsqlCommand(query, connection);
-        command.ExecuteNonQuery();
+        // Execute the drop table query
+        using (var dropCommand = new Npgsql.NpgsqlCommand(dropTableQuery, connection))
+        {
+            dropCommand.ExecuteNonQuery();
+        }
+
+        // Execute the create table query
+        using (var createCommand = new Npgsql.NpgsqlCommand(createTableQuery, connection))
+        {
+            createCommand.ExecuteNonQuery();
+        }
     }
 
-    private void InsertRowIntoPostgres(string[] headers, string[] row)
+    private void InsertRowIntoPostgres(string[] headers, string[] row, string tableName)
     {
-        var tableName = SelectedFileName ?? "UploadedData";
+        //var tableName = SelectedFileName ?? "UploadedData";
         var columns = string.Join(", ", headers.Select(h => h.Trim()));
         var values = string.Join(", ", row.Select(r => $"'{r.Trim()}'"));
 
@@ -135,7 +163,48 @@
 
     private void SubmitQuestion()
     {
+        if (!string.IsNullOrWhiteSpace(InputText))
+        {
+            // Use OpenAI API to process the question
+            var response = QueryOpenAi(InputText);
 
+            // Query PostgreSQL based on the response
+            QueryPostgres(response);
+        }
+    }
+
+    private string QueryOpenAi(string question)
+    {
+        // Call OpenAI API
+        var apiKey = "Your_OpenAI_API_Key";
+        var client = new HttpClient();
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+
+        var requestBody = new
+        {
+            model = "text-davinci-003",
+            prompt = question,
+            max_tokens = 100
+        };
+
+        var response = client.PostAsJsonAsync("https://api.openai.com/v1/completions", requestBody).Result;
+        var result = response.Content.ReadFromJsonAsync<dynamic>().Result;
+
+        return result?.choices[0]?.text?.ToString() ?? string.Empty;
+    }
+
+    private void QueryPostgres(string query)
+    {
+        using var connection = new Npgsql.NpgsqlConnection(GetConnectionString());
+        connection.Open();
+
+        using var command = new Npgsql.NpgsqlCommand(query, connection);
+        using var reader = command.ExecuteReader();
+
+        while (reader.Read())
+        {
+            // Process query results
+        }
     }
 
 
