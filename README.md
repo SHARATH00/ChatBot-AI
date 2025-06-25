@@ -15,7 +15,7 @@ The app is styled with Bootstrap and custom CSS for a modern, colorful, and resp
 ## Features
 
 - **CSV Upload:** Upload multiple CSV files; each file creates a new table in PostgreSQL (table name is sanitized from the file name).
-- **AI-Powered SQL Generation:** Enter a natural language question; the app uses an AI model to generate the corresponding SQL query.
+- **AI-Powered SQL Generation:** Enter a natural language question; the app uses an AI model(gpt-3.5-turbo) to generate the corresponding SQL query.
 - **Live Results:** The generated SQL and the resulting data are displayed instantly.
 - **Modern UI:** Uses Bootstrap and custom gradients for a visually appealing interface.
 
@@ -27,7 +27,7 @@ The app is styled with Bootstrap and custom CSS for a modern, colorful, and resp
 - **Bootstrap 5**
 - **Npgsql (PostgreSQL C# driver)**
 - **OpenAI API (or local GPT-Neo endpoint)**
-- **C# 12**
+- **C#**
 - **Custom CSS**
 
 ---
