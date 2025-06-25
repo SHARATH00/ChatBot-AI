@@ -3,59 +3,77 @@
 
 <PageTitle>Home</PageTitle>
 
-<h1>AI ChatBot</h1>
+<div class="container mt-5">
+    <h1 class="text-center mb-4">AI ChatBot</h1>
 
-<div>
-    <InputFile OnChange="LoadFiles" multiple />
-    <button @onclick="CreateDatabaseTablesAsync">Submit</button>
-</div>
-
-@if (ShowSuccessMessage)
-{
-    <div class="alert alert-success" role="alert">
-        @SuccessMessage
+    <!-- File Upload Section -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Upload CSV Files</h5>
+            <p class="card-text">Select one or more CSV files to create database tables.</p>
+            <InputFile OnChange="LoadFiles" multiple class="form-control mb-3" />
+            <button class="btn btn-primary" @onclick="CreateDatabaseTablesAsync">Submit</button>
+        </div>
     </div>
-}
 
-<div>
-    <textarea id="textBox" class="form-control" @bind="InputText"  placeholder="Type your question..." rows="5"></textarea>
-    <button @onclick="SubmitQuestion">Ask</button>
-</div>
-
-<div>
-    <h3>SQL Query</h3>
-    <pre>@SqlQuery</pre>
-
-    <h3>Table Data</h3>
-    @if (TableData != null && TableData.Any())
+    <!-- Success Message -->
+    @if (ShowSuccessMessage)
     {
-        <table class="table">
-            <thead>
-                <tr>
-                    @foreach (var header in TableHeaders)
-                    {
-                        <th>@header</th>
-                    }
-                </tr>
-            </thead>
-            <tbody>
-                @foreach (var row in TableData)
-                {
-                    <tr>
-                        @foreach (var cell in row)
+        <div class="alert alert-success alert-dismissible fade show" role="alert">
+            @SuccessMessage
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        </div>
+    }
+
+    <!-- Chat Section -->
+    <div class="card shadow-sm mb-4">
+        <div class="card-body">
+            <h5 class="card-title">Ask a Question</h5>
+            <p class="card-text">Type your question below and get an answer based on your database.</p>
+            <textarea id="textBox" class="form-control mb-3" @bind="InputText" placeholder="Type your question..." rows="5"></textarea>
+            <button class="btn btn-success" @onclick="SubmitQuestion">Ask</button>
+        </div>
+    </div>
+
+    <!-- SQL Query and Table Data Section -->
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h5 class="card-title">SQL Query</h5>
+            <pre class="bg-light p-3 rounded">@SqlQuery</pre>
+
+            <h5 class="card-title mt-4">Table Data</h5>
+            @if (TableData != null && TableData.Any())
+            {
+                <table class="table table-bordered table-striped">
+                    <thead class="table-dark">
+                        <tr>
+                            @foreach (var header in TableHeaders)
+                            {
+                                <th>@header</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in TableData)
                         {
-                            <td>@cell</td>
+                            <tr>
+                                @foreach (var cell in row)
+                                {
+                                    <td>@cell</td>
+                                }
+                            </tr>
                         }
-                    </tr>
-                }
-            </tbody>
-        </table>
-    }
-    else
-    {
-        <p>No data available.</p>
-    }
+                    </tbody>
+                </table>
+            }
+            else
+            {
+                <p class="text-muted">No data available.</p>
+            }
+        </div>
+    </div>
 </div>
+
 
 
 
@@ -212,23 +230,80 @@
     }
 
 
-
-    private void SubmitQuestion()
+    private async void SubmitQuestion()
     {
         if (!string.IsNullOrWhiteSpace(InputText))
         {
-            // Generate table information for the prompt
             var tableInfo = GenerateTableInfo();
+            var response = await QueryOpenAiAsync(InputText, tableInfo);
 
-            // Use OpenAI API to process the question
-            var response = QueryOpenAi(InputText, tableInfo);
-
-            // Query PostgreSQL based on the response
-            QueryPostgres(response);
+            if (!string.IsNullOrWhiteSpace(response))
+            {
+                QueryPostgres(response);
+            }
         }
     }
 
-    private string QueryOpenAi(string nlQuery, string tableInfo)
+
+
+    private async Task<string> QueryOpenAiAsync(string nlQuery, string tableInfo)
+    {
+        var apiKey = Configuration["OpenAI:ApiKey"];
+        if (string.IsNullOrEmpty(apiKey))
+        {
+            throw new InvalidOperationException("OpenAI API key is not configured.");
+        }
+
+        var prompt = $@"
+            You are an AI that converts natural language questions into SQL queries.
+            Available tables and their columns:
+            {tableInfo}
+
+            Generate an SQL query that answers the following question:
+            {nlQuery}
+            Ensure to use appropriate JOINs if required.
+            SQL Query:
+";
+
+        var client = new HttpClient();
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+
+        var requestBody = new
+        {
+            model = "gpt-3.5-turbo",
+            messages = new[]
+            {
+            new { role = "user", content = prompt }
+        },
+            max_tokens = 150
+        };
+
+        try
+        {
+            var response = await client.PostAsJsonAsync("https://api.openai.com/v1/chat/completions", requestBody);
+            response.EnsureSuccessStatusCode();
+
+            var resultJson = await response.Content.ReadAsStringAsync();
+            var result = System.Text.Json.JsonDocument.Parse(resultJson);
+
+            var query = result.RootElement
+                              .GetProperty("choices")[0]
+                              .GetProperty("message")
+                              .GetProperty("content")
+                              .GetString()
+                              ?.Trim();
+
+            return query ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+            return null;
+        }
+    }
+
+
+    /*private string QueryOpenAi(string nlQuery, string tableInfo)
     {
         // Retrieve the OpenAI API key from appsettings.json
         var apiKey = Configuration["OpenAI:ApiKey"];
@@ -256,7 +331,7 @@
         // Prepare the request body
         var requestBody = new
         {
-            model = "gpt-4",
+            model = "gpt-3.5-turbo",
             messages = new[]
             {
                 new { role = "system", content = prompt }
@@ -279,6 +354,47 @@
             return null;
         }
     }
+
+
+    private string QueryGptNeo(string nlQuery, string tableInfo)
+    {
+        // Construct the prompt
+            // Construct the prompt
+            var prompt = $@"
+            You are an AI that converts natural language questions into SQL queries.
+            Available tables and their columns:
+        {tableInfo}
+
+            Generate an SQL query that answers the following question:
+        {nlQuery}
+            Ensure to use appropriate JOINs if required.
+            SQL Query:
+            ";
+
+        try
+        {
+            // Call the locally hosted GPT-Neo model or API
+            var client = new HttpClient();
+            var requestBody = new
+            {
+                prompt = prompt,
+                max_tokens = 512
+            };
+
+            // Replace the URL with your locally hosted GPT-Neo endpoint
+            var response = client.PostAsJsonAsync("http://localhost:5000/generate", requestBody).Result;
+            var result = response.Content.ReadFromJsonAsync<dynamic>().Result;
+
+            // Extract and return the SQL query
+            return result?.text?.ToString()?.Trim() ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+            return null;
+        }
+    }*/
+
 
     private void QueryPostgres(string query)
     {
