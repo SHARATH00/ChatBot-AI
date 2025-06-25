@@ -49,3 +49,66 @@ h1:focus {
 .darker-border-checkbox.form-check-input {
     border-color: #929292;
 }
+
+/* Custom styles for Home.razor */
+.ai-header {
+    background: linear-gradient(90deg, #6a11cb 0%, #2575fc 100%);
+    color: #fff;
+    padding: 1.5rem 0;
+    border-radius: 0.5rem;
+    font-size: 2rem;
+    letter-spacing: 2px;
+    margin-bottom: 2rem;
+}
+
+.card {
+    font-size: 0.95rem;
+}
+
+.card-title {
+    color: #2575fc;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.btn-primary {
+    background: linear-gradient(90deg, #43cea2 0%, #185a9d 100%);
+    border: none;
+}
+
+.btn-success {
+    background: linear-gradient(90deg, #f7971e 0%, #ffd200 100%);
+    color: #222;
+    border: none;
+}
+
+pre.bg-light {
+    font-size: 0.9rem;
+    color: #333;
+    background: #f3f8ff !important;
+    border-left: 4px solid #2575fc;
+}
+
+.table thead.table-dark th {
+    background: linear-gradient(90deg, #43cea2 0%, #185a9d 100%);
+    color: #fff;
+    font-size: 0.95rem;
+}
+
+.table td, .table th {
+    font-size: 0.92rem;
+}
+
+textarea.form-control {
+    font-size: 0.95rem;
+    background: #f8f9fa;
+    border-radius: 0.4rem;
+}
+
+.alert-success {
+    background: linear-gradient(90deg, #a8ff78 0%, #78ffd6 100%);
+    color: #222;
+    font-size: 1rem;
+    border: none;
+}
+

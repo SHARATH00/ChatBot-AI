@@ -4,10 +4,12 @@
 <PageTitle>Home</PageTitle>
 
 <div class="container mt-5">
-    <h1 class="text-center mb-4">AI ChatBot</h1>
+    <div class="ai-header text-center mb-4 shadow-sm">
+        AI ChatBot
+    </div>
 
     <!-- File Upload Section -->
-    <div class="card shadow-sm mb-4">
+    <div class="card shadow-sm mb-4 border-0">
         <div class="card-body">
             <h5 class="card-title">Upload CSV Files</h5>
             <p class="card-text">Select one or more CSV files to create database tables.</p>
@@ -16,7 +18,6 @@
         </div>
     </div>
 
-    <!-- Success Message -->
     @if (ShowSuccessMessage)
     {
         <div class="alert alert-success alert-dismissible fade show" role="alert">
@@ -26,7 +27,7 @@
     }
 
     <!-- Chat Section -->
-    <div class="card shadow-sm mb-4">
+    <div class="card shadow-sm mb-4 border-0">
         <div class="card-body">
             <h5 class="card-title">Ask a Question</h5>
             <p class="card-text">Type your question below and get an answer based on your database.</p>
@@ -36,7 +37,7 @@
     </div>
 
     <!-- SQL Query and Table Data Section -->
-    <div class="card shadow-sm">
+    <div class="card shadow-sm border-0">
         <div class="card-body">
             <h5 class="card-title">SQL Query</h5>
             <pre class="bg-light p-3 rounded">@SqlQuery</pre>
@@ -77,6 +78,7 @@
 
 
 
+
 @code {
 
     private string InputText = null;
@@ -102,7 +104,7 @@
 
     }
 
-    private async void CreateDatabaseTablesAsync() 
+    private async Task CreateDatabaseTablesAsync() 
     {
 
         
@@ -129,6 +131,7 @@
                 // Set success message
                 SuccessMessage = "Tables created successfully!";
                 ShowSuccessMessage = true;
+                StateHasChanged(); // Force UI update after TableData chang
             }
             catch (Exception ex)
             {
@@ -230,7 +233,7 @@
     }
 
 
-    private async void SubmitQuestion()
+    private async Task SubmitQuestion()
     {
         if (!string.IsNullOrWhiteSpace(InputText))
         {
@@ -240,6 +243,7 @@
             if (!string.IsNullOrWhiteSpace(response))
             {
                 QueryPostgres(response);
+                StateHasChanged(); // Force UI update after TableData chang
             }
         }
     }
