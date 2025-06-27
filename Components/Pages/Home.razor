@@ -12,8 +12,8 @@
     <div class="card shadow-sm mb-4 border-0">
         <div class="card-body">
             <h5 class="card-title">Upload CSV Files</h5>
-            <p class="card-text">Select one or more CSV files to create database tables.</p>
-            <InputFile OnChange="LoadFiles" multiple class="form-control mb-3" />
+            <p class="card-text text-secondary">Select one or more CSV files to create database tables.</p>
+            <InputFile OnChange="LoadFiles" multiple class="form-control mb-3" accept=".csv,.pdf" />
             <button class="btn btn-primary" @onclick="CreateDatabaseTablesAsync">Submit</button>
         </div>
     </div>
@@ -26,53 +26,76 @@
         </div>
     }
 
+    <!-- PDF Section -->
+    @if (PdfTexts.Any())
+    {
+        <div class="card shadow-sm mb-4 border-0">
+            <div class="card-body">
+                <h5 class="card-title">PDF Documents</h5>
+                @foreach (var pdf in PdfTexts)
+                {
+                    <div class="mb-3">
+                        <strong>@pdf.Key</strong>
+                        <textarea class="form-control mb-2" rows="3" readonly>@pdf.Value</textarea>
+                        <input class="form-control mb-2" @bind="PdfQuestion" placeholder="Ask a question about this PDF..." />
+                        <button class="btn btn-info btn-sm" @onclick="() => AskPdfQuestion(pdf.Key)">Ask PDF</button>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+
     <!-- Chat Section -->
     <div class="card shadow-sm mb-4 border-0">
         <div class="card-body">
             <h5 class="card-title">Ask a Question</h5>
-            <p class="card-text">Type your question below and get an answer based on your database.</p>
-            <textarea id="textBox" class="form-control mb-3" @bind="InputText" placeholder="Type your question..." rows="5"></textarea>
+            <p class="card-text text-secondary">Type your question below and get an answer based on your database.</p>
+            <textarea id="textBox" class="form-control mb-3" @bind="InputText" placeholder="Type your question..." rows="2"></textarea>
             <button class="btn btn-success" @onclick="SubmitQuestion">Ask</button>
         </div>
     </div>
 
     <!-- SQL Query and Table Data Section -->
-    <div class="card shadow-sm border-0">
-        <div class="card-body">
-            <h5 class="card-title">SQL Query</h5>
-            <pre class="bg-light p-3 rounded">@SqlQuery</pre>
+    @if (ShowQueryResult)
+    {
+        <div class="card shadow-sm border-0">
+            <div class="card-body">
+                <h5 class="card-title">SQL Query</h5>
+                <pre class="bg-light p-3 rounded">@SqlQuery</pre>
 
-            <h5 class="card-title mt-4">Table Data</h5>
-            @if (TableData != null && TableData.Any())
-            {
-                <table class="table table-bordered table-striped">
-                    <thead class="table-dark">
-                        <tr>
-                            @foreach (var header in TableHeaders)
-                            {
-                                <th>@header</th>
-                            }
-                        </tr>
-                    </thead>
-                    <tbody>
-                        @foreach (var row in TableData)
-                        {
+                <h5 class="card-title mt-4">Table Data</h5>
+                @if (TableData != null && TableData.Any())
+                {
+                    <table class="table table-bordered table-striped">
+                        <thead class="table-dark">
                             <tr>
-                                @foreach (var cell in row)
+                                @foreach (var header in TableHeaders)
                                 {
-                                    <td>@cell</td>
+                                    <th>@header</th>
                                 }
                             </tr>
-                        }
-                    </tbody>
-                </table>
-            }
-            else
-            {
-                <p class="text-muted">No data available.</p>
-            }
+                        </thead>
+                        <tbody>
+                            @foreach (var row in TableData)
+                            {
+                                <tr>
+                                    @foreach (var cell in row)
+                                    {
+                                        <td>@cell</td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <p class="text-muted">No data available.</p>
+                }
+            </div>
         </div>
-    </div>
+    }
+
 </div>
 
 
@@ -88,124 +111,241 @@
     private string? SuccessMessage;
     private bool ShowSuccessMessage { get; set; } = false;
 
+    private bool ShowQueryResult { get; set; } = false;
+
 
     private string SqlQuery { get; set; } = string.Empty;
     private List<string> TableHeaders { get; set; } = new();
     private List<List<string>> TableData { get; set; } = new();
 
+    // PDF support
+    private Dictionary<string, string> PdfTexts { get; set; } = new();
+    private string PdfQuestion { get; set; } = string.Empty;
+    private string PdfAnswer { get; set; } = string.Empty;
+    private const long MaxFileSize = 200 * 1024 * 1024; // 200 MB
+
+
 
 
     private void LoadFiles(InputFileChangeEventArgs e)
     {
-
-        // Store all selected files
         UploadedFiles = e.GetMultipleFiles().ToList();
+        PdfTexts.Clear();
 
-
+        foreach (var file in UploadedFiles)
+        {
+            if (file.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
+            {
+                using var stream = file.OpenReadStream();
+                using var ms = new MemoryStream();
+                stream.CopyTo(ms);
+                ms.Position = 0;
+                var text = ExtractTextFromPdf(ms);
+                PdfTexts[file.Name] = text.Length > 2000 ? text.Substring(0, 2000) + "..." : text;
+            }
+        }
     }
 
-    private async Task CreateDatabaseTablesAsync() 
+    private async Task CreateDatabaseTablesAsync()
     {
-
-        
-            try
+        try
+        {
+            foreach (var file in UploadedFiles.Where(f => f.Name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)))
             {
-                // Log to the console
-                Console.WriteLine("CreateDatabaseTables function is executing.");
-
-                foreach (var file in UploadedFiles)
-                {
-                    // Extract and sanitize the file name to use as the table name
-                    var sanitizedFileName = SanitizeFileName(file.Name);
-
-
-                        // Read the file content
-                        using var stream = file.OpenReadStream();
-                        using var reader = new StreamReader(stream);
-                        var csvContent = await reader.ReadToEndAsync();
-
-                        // Process the CSV content
-                    ProcessCsvFile(csvContent, sanitizedFileName);
-                }
-
-                // Set success message
-                SuccessMessage = "Tables created successfully!";
-                ShowSuccessMessage = true;
-                StateHasChanged(); // Force UI update after TableData chang
+                var sanitizedFileName = SanitizeFileName(file.Name);
+                using var stream = file.OpenReadStream(MaxFileSize);
+                using var reader = new StreamReader(stream);
+                var csvContent = await reader.ReadToEndAsync();
+                ProcessCsvFile(csvContent, sanitizedFileName);
             }
-            catch (Exception ex)
-            {
-                // Handle errors (optional)
-                SuccessMessage = $"Error: {ex.Message}";
-            }
-        
-
-
+            SuccessMessage = "Tables created successfully!";
+            ShowSuccessMessage = true;
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            SuccessMessage = $"Error: {ex.Message}";
+        }
     }
 
-   
+    // PDF extraction using PdfPig
+    private string ExtractTextFromPdf(Stream pdfStream)
+    {
+        try
+        {
+            using var pdf = UglyToad.PdfPig.PdfDocument.Open(pdfStream);
+            var text = string.Join("\n", pdf.GetPages().Select(p => p.Text));
+            return text;
+        }
+        catch
+        {
+            return "Could not extract text from PDF.";
+        }
+    }
+
+    private async Task AskPdfQuestion(string pdfFileName)
+    {
+        var pdfText = PdfTexts[pdfFileName];
+        var prompt = $"Given the following document, answer the user's question:\n\n{pdfText}\n\nQuestion: {PdfQuestion}";
+        PdfAnswer = await QueryOpenAiPdfAsync(prompt);
+        StateHasChanged();
+    }
+
+    private async Task<string> QueryOpenAiPdfAsync(string prompt)
+    {
+        var apiKey = Configuration["OpenAI:ApiKey"];
+        if (string.IsNullOrEmpty(apiKey))
+            throw new InvalidOperationException("OpenAI API key is not configured.");
+
+        var client = new HttpClient();
+        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
+
+        var requestBody = new
+        {
+            model = "gpt-3.5-turbo",
+            messages = new[]
+            {
+                new { role = "user", content = prompt }
+            },
+            max_tokens = 300
+        };
+
+        try
+        {
+            var response = await client.PostAsJsonAsync("https://api.openai.com/v1/chat/responses", requestBody);
+            response.EnsureSuccessStatusCode();
+            var resultJson = await response.Content.ReadAsStringAsync();
+            var result = System.Text.Json.JsonDocument.Parse(resultJson);
+
+            var answer = result.RootElement
+                .GetProperty("choices")[0]
+                .GetProperty("message")
+                .GetProperty("content")
+                .GetString()
+                ?.Trim();
+
+            return answer ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error: {ex.Message}");
+            return "Error getting answer from OpenAI.";
+        }
+    }
 
 
     private void ProcessCsvFile(string csvContent, string tableName)
     {
-        // Parse CSV and create table in PostgreSQL
         var lines = csvContent.Split('\n');
         if (lines.Length > 0)
         {
             var headers = lines[0].Split(',');
+            var sampleRows = new List<string[]>();
 
-            // Create table in PostgreSQL
-            CreatePostgresTable(headers, tableName);
+            // Sample up to 50 rows for type inference
+            for (int i = 1; i < Math.Min(lines.Length, 1001); i++)
+            {
+                var row = lines[i].Split(',');
+                if (!row.All(string.IsNullOrWhiteSpace))
+                    sampleRows.Add(row);
+            }
+
+            CreatePostgresTable(headers, tableName, sampleRows);
 
             // Insert data into PostgreSQL
             for (int i = 1; i < lines.Length; i++)
             {
                 var row = lines[i].Split(',');
-
-                // Skip empty rows (e.g., the last row in the file)
                 if (row.All(string.IsNullOrWhiteSpace))
-                {
                     continue;
-                }
-
                 InsertRowIntoPostgres(headers, row, tableName);
             }
         }
     }
 
 
-    private void CreatePostgresTable(string[] headers, string tableName)
+
+    private string SanitizeColumnName(string columnName)
     {
-        // Define table creation logic
+        // Remove invalid characters, allow only letters, numbers, and underscores
+        var sanitized = new string(columnName
+            .Trim()
+            .ToLowerInvariant()
+            .Select(c => char.IsLetterOrDigit(c) ? c : '_')
+            .ToArray());
 
-        var columns = string.Join(", ", headers.Select(h => $"{h.Trim()} TEXT"));
+        // Ensure the name does not start with a digit
+        if (sanitized.Length == 0 || char.IsDigit(sanitized[0]))
+        {
+            sanitized = "col_" + sanitized;
+        }
 
-        // Query to drop the table if it already exists
+        // Optionally, truncate to 63 characters (PostgreSQL identifier limit)
+        if (sanitized.Length > 63)
+            sanitized = sanitized.Substring(0, 63);
+
+        return sanitized;
+    }
+
+    private string InferPostgresType(List<string> samples)
+    {
+        bool isInt = true, isDouble = true, isBool = true, isDate = true, isTimestamp = true;
+
+        foreach (var value in samples)
+        {
+            var v = value.Trim();
+            if (string.IsNullOrEmpty(v)) continue;
+
+            if (isInt && !int.TryParse(v, out _)) isInt = false;
+            if (isDouble && !double.TryParse(v, out _)) isDouble = false;
+            if (isBool && !bool.TryParse(v, out _)) isBool = false;
+            if (isDate && !DateTime.TryParseExact(v, "yyyy-MM-dd", null, System.Globalization.DateTimeStyles.None, out _)) isDate = false;
+            if (isTimestamp && !DateTime.TryParse(v, out _)) isTimestamp = false;
+        }
+
+        if (isInt) return "DOUBLE PRECISION";
+        if (isDouble) return "DOUBLE PRECISION";
+        if (isBool) return "BOOLEAN";
+        if (isDate) return "DATE";
+        if (isTimestamp) return "TIMESTAMP";
+        return "TEXT";
+    }
+
+    private void CreatePostgresTable(string[] headers, string tableName, List<string[]> sampleRows)
+    {
+        // Infer types for each column
+        var columnTypes = new List<string>();
+        for (int i = 0; i < headers.Length; i++)
+        {
+            var samples = sampleRows.Select(row => row.Length > i ? row[i] : "").ToList();
+            columnTypes.Add(InferPostgresType(samples));
+        }
+
+        // Sanitize column names and build column definitions
+        var columns = string.Join(", ", headers.Select((h, i) => $"{SanitizeColumnName(h)} {columnTypes[i]}"));
+
         var dropTableQuery = $"DROP TABLE IF EXISTS {tableName};";
-
-        // Query to create the table
         var createTableQuery = $"CREATE TABLE IF NOT EXISTS {tableName} ({columns});";
 
         using var connection = new Npgsql.NpgsqlConnection(GetConnectionString());
         connection.Open();
 
-        // Execute the drop table query
         using (var dropCommand = new Npgsql.NpgsqlCommand(dropTableQuery, connection))
         {
             dropCommand.ExecuteNonQuery();
         }
-
-        // Execute the create table query
         using (var createCommand = new Npgsql.NpgsqlCommand(createTableQuery, connection))
         {
             createCommand.ExecuteNonQuery();
         }
     }
 
+
+
     private void InsertRowIntoPostgres(string[] headers, string[] row, string tableName)
     {
         //var tableName = SelectedFileName ?? "UploadedData";
-        var columns = string.Join(", ", headers.Select(h => h.Trim()));
+        var columns = string.Join(", ", headers.Select(h => SanitizeColumnName(h)));
         var values = string.Join(", ", row.Select(r => $"'{r.Trim()}'"));
 
         var query = $"INSERT INTO {tableName} ({columns}) VALUES ({values});";
@@ -243,6 +383,7 @@
             if (!string.IsNullOrWhiteSpace(response))
             {
                 QueryPostgres(response);
+                ShowQueryResult = true;
                 StateHasChanged(); // Force UI update after TableData chang
             }
         }
@@ -401,7 +542,7 @@
 
 
     private void QueryPostgres(string query)
-    {
+    { 
         SqlQuery = query;
 
         using var connection = new Npgsql.NpgsqlConnection(GetConnectionString());
