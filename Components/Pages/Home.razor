@@ -14,7 +14,13 @@
             <h5 class="card-title">Upload CSV Files</h5>
             <p class="card-text text-secondary">Select one or more CSV files to create database tables.</p>
             <InputFile OnChange="LoadFiles" multiple class="form-control mb-3" accept=".csv,.pdf" />
-            <button class="btn btn-primary" @onclick="CreateDatabaseTablesAsync">Submit</button>
+            <button class="btn btn-primary"
+                    @onclick="CreateDatabaseTablesAsync"
+                    disabled="@IsProcessing"
+                    style="cursor:@(IsProcessing ? "wait" : "pointer")">
+                @(IsProcessing ? "Processing..." : "Submit")
+            </button>
+
         </div>
     </div>
 
@@ -26,71 +32,80 @@
         </div>
     }
 
-    <!-- PDF Section -->
-    @if (PdfTexts.Any())
-    {
-        <div class="card shadow-sm mb-4 border-0">
-            <div class="card-body">
-                <h5 class="card-title">PDF Documents</h5>
-                @foreach (var pdf in PdfTexts)
-                {
-                    <div class="mb-3">
-                        <strong>@pdf.Key</strong>
-                        <textarea class="form-control mb-2" rows="3" readonly>@pdf.Value</textarea>
-                        <input class="form-control mb-2" @bind="PdfQuestion" placeholder="Ask a question about this PDF..." />
-                        <button class="btn btn-info btn-sm" @onclick="() => AskPdfQuestion(pdf.Key)">Ask PDF</button>
-                    </div>
-                }
-            </div>
-        </div>
-    }
 
-    <!-- Chat Section -->
+
+    <!-- Unified Ask a Question Section -->
     <div class="card shadow-sm mb-4 border-0">
         <div class="card-body">
             <h5 class="card-title">Ask a Question</h5>
-            <p class="card-text text-secondary">Type your question below and get an answer based on your database.</p>
+            <p class="card-text text-secondary">Type your question below and get an answer based on your selected data source.</p>
+
+            <div class="mb-3">
+                <label class="form-label">Select Data Source:</label>
+                <select class="form-select" @bind="SelectedDataSource">
+                    <option value="csv">Database (CSV)</option>
+                    @foreach (var pdf in PdfTexts.Keys)
+                    {
+                        <option value="@pdf">PDF: @pdf</option>
+                    }
+                </select>
+            </div>
+
             <textarea id="textBox" class="form-control mb-3" @bind="InputText" placeholder="Type your question..." rows="2"></textarea>
-            <button class="btn btn-success" @onclick="SubmitQuestion">Ask</button>
+            <button class="btn btn-success" @onclick="AskUnifiedQuestion">Ask</button>
         </div>
     </div>
+
+
 
     <!-- SQL Query and Table Data Section -->
     @if (ShowQueryResult)
     {
         <div class="card shadow-sm border-0">
             <div class="card-body">
-                <h5 class="card-title">SQL Query</h5>
-                <pre class="bg-light p-3 rounded">@SqlQuery</pre>
-
-                <h5 class="card-title mt-4">Table Data</h5>
-                @if (TableData != null && TableData.Any())
+                @if (IsPdfAnswer)
                 {
-                    <table class="table table-bordered table-striped">
-                        <thead class="table-dark">
-                            <tr>
-                                @foreach (var header in TableHeaders)
-                                {
-                                    <th>@header</th>
-                                }
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var row in TableData)
-                            {
-                                <tr>
-                                    @foreach (var cell in row)
-                                    {
-                                        <td>@cell</td>
-                                    }
-                                </tr>
-                            }
-                        </tbody>
-                    </table>
+                    @if (IsPdfAnswer)
+                    {
+                        <h5 class="card-title">PDF Answer (@CurrentPdfFileName)</h5>
+                        <textarea class="form-control mb-2" rows="4" readonly>@PdfAnswer</textarea>
+                    }
+
                 }
                 else
                 {
-                    <p class="text-muted">No data available.</p>
+                    <h5 class="card-title">SQL Query</h5>
+                    <pre class="bg-light p-3 rounded">@SqlQuery</pre>
+
+                    <h5 class="card-title mt-4">Table Data</h5>
+                    @if (TableData != null && TableData.Any())
+                    {
+                        <table class="table table-bordered table-striped">
+                            <thead class="table-dark">
+                                <tr>
+                                    @foreach (var header in TableHeaders)
+                                    {
+                                        <th>@header</th>
+                                    }
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in TableData)
+                                {
+                                    <tr>
+                                        @foreach (var cell in row)
+                                        {
+                                            <td>@cell</td>
+                                        }
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    }
+                    else
+                    {
+                        <p class="text-muted">No data available.</p>
+                    }
                 }
             </div>
         </div>
@@ -111,6 +126,14 @@
     private string? SuccessMessage;
     private bool ShowSuccessMessage { get; set; } = false;
 
+    private bool IsProcessing { get; set; } = false;
+
+    private bool IsPdfAnswer { get; set; } = false;
+    private string CurrentPdfFileName { get; set; } = string.Empty;
+
+    private string SelectedDataSource { get; set; } = "csv";
+
+
     private bool ShowQueryResult { get; set; } = false;
 
 
@@ -127,7 +150,7 @@
 
 
 
-    private void LoadFiles(InputFileChangeEventArgs e)
+    private async Task LoadFiles(InputFileChangeEventArgs e)
     {
         UploadedFiles = e.GetMultipleFiles().ToList();
         PdfTexts.Clear();
@@ -138,7 +161,7 @@
             {
                 using var stream = file.OpenReadStream();
                 using var ms = new MemoryStream();
-                stream.CopyTo(ms);
+                await stream.CopyToAsync(ms);
                 ms.Position = 0;
                 var text = ExtractTextFromPdf(ms);
                 PdfTexts[file.Name] = text.Length > 2000 ? text.Substring(0, 2000) + "..." : text;
@@ -146,8 +169,12 @@
         }
     }
 
+
     private async Task CreateDatabaseTablesAsync()
     {
+        IsProcessing = true;
+
+        StateHasChanged();
         try
         {
             foreach (var file in UploadedFiles.Where(f => f.Name.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)))
@@ -166,6 +193,9 @@
         {
             SuccessMessage = $"Error: {ex.Message}";
         }
+
+		IsProcessing = false;
+		StateHasChanged();
     }
 
     // PDF extraction using PdfPig
@@ -188,8 +218,12 @@
         var pdfText = PdfTexts[pdfFileName];
         var prompt = $"Given the following document, answer the user's question:\n\n{pdfText}\n\nQuestion: {PdfQuestion}";
         PdfAnswer = await QueryOpenAiPdfAsync(prompt);
+        IsPdfAnswer = true;
+        CurrentPdfFileName = pdfFileName;
+        ShowQueryResult = true;
         StateHasChanged();
     }
+
 
     private async Task<string> QueryOpenAiPdfAsync(string prompt)
     {
@@ -212,7 +246,7 @@
 
         try
         {
-            var response = await client.PostAsJsonAsync("https://api.openai.com/v1/chat/responses", requestBody);
+            var response = await client.PostAsJsonAsync("https://api.openai.com/v1/chat/completions", requestBody);
             response.EnsureSuccessStatusCode();
             var resultJson = await response.Content.ReadAsStringAsync();
             var result = System.Text.Json.JsonDocument.Parse(resultJson);
@@ -373,6 +407,23 @@
     }
 
 
+    private async Task AskUnifiedQuestion()
+    {
+        if (string.IsNullOrWhiteSpace(InputText))
+            return;
+
+        if (SelectedDataSource == "csv")
+        {
+            await SubmitQuestion();
+        }
+        else
+        {
+            PdfQuestion = InputText;
+            await AskPdfQuestion(SelectedDataSource);
+        }
+    }
+
+
     private async Task SubmitQuestion()
     {
         if (!string.IsNullOrWhiteSpace(InputText))
@@ -385,6 +436,7 @@
                 QueryPostgres(response);
                 ShowQueryResult = true;
                 StateHasChanged(); // Force UI update after TableData chang
+                IsPdfAnswer = false;
             }
         }
     }
@@ -448,60 +500,10 @@
     }
 
 
-    /*private string QueryOpenAi(string nlQuery, string tableInfo)
-    {
-        // Retrieve the OpenAI API key from appsettings.json
-        var apiKey = Configuration["OpenAI:ApiKey"];
-        if (string.IsNullOrEmpty(apiKey))
-        {
-            throw new InvalidOperationException("OpenAI API key is not configured.");
-        }
-
-        // Construct the prompt
-        var prompt = $@"
-        You are an AI that converts natural language questions into SQL queries. 
-        Available tables and their columns:
-        {tableInfo}
-
-        Generate an SQL query that answers the following question:
-        {nlQuery}
-        Ensure to use appropriate JOINs if required.
-        SQL Query:
-        ";
-
-        // Prepare the HTTP client
-        var client = new HttpClient();
-        client.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
-
-        // Prepare the request body
-        var requestBody = new
-        {
-            model = "gpt-3.5-turbo",
-            messages = new[]
-            {
-                new { role = "system", content = prompt }
-            },
-            max_tokens = 150
-        };
-
-        try
-        {
-            // Send the request to OpenAI API
-            var response = client.PostAsJsonAsync("https://api.openai.com/v1/chat/completions", requestBody).Result;
-            var result = response.Content.ReadFromJsonAsync<dynamic>().Result;
-
-            // Extract and return the SQL query
-            return result?.choices[0]?.message?.content?.ToString()?.Trim() ?? string.Empty;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error: {ex.Message}");
-            return null;
-        }
-    }
 
 
-    private string QueryGptNeo(string nlQuery, string tableInfo)
+
+    /*private string QueryGptNeo(string nlQuery, string tableInfo)
     {
         // Construct the prompt
             // Construct the prompt
