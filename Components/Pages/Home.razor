@@ -18,7 +18,7 @@
                     @onclick="CreateDatabaseTablesAsync"
                     disabled="@IsProcessing"
                     style="cursor:@(IsProcessing ? "wait" : "pointer")">
-                @(IsProcessing ? "Processing..." : "Submit")
+                @(IsProcessing ? "Processing..." : "Submit") 
             </button>
 
         </div>
@@ -105,9 +105,6 @@
 </div>
 
 
-
-
-
 @code {
 
     private string InputText = null;
@@ -127,7 +124,6 @@
 
 
     private bool ShowQueryResult { get; set; } = false;
-
 
     private string SqlQuery { get; set; } = string.Empty;
     private List<string> TableHeaders { get; set; } = new();
@@ -267,8 +263,9 @@
         {
             var headers = lines[0].Split(',');
             var sampleRows = new List<string[]>();
+            var dataRows = new List<string[]>();
 
-            // Sample up to 50 rows for type inference
+            // Sample up to 1000 rows for type inference
             for (int i = 1; i < Math.Min(lines.Length, 1001); i++)
             {
                 var row = lines[i].Split(',');
@@ -276,18 +273,93 @@
                     sampleRows.Add(row);
             }
 
-            CreatePostgresTable(headers, tableName, sampleRows);
-
-            // Insert data into PostgreSQL
+            // Collect all data rows for batched insert
             for (int i = 1; i < lines.Length; i++)
             {
                 var row = lines[i].Split(',');
-                if (row.All(string.IsNullOrWhiteSpace))
-                    continue;
-                InsertRowIntoPostgres(headers, row, tableName);
+                if (!row.All(string.IsNullOrWhiteSpace))
+                    dataRows.Add(row);
+            }
+
+            var columnTypes = CreatePostgresTable(headers, tableName, sampleRows);
+
+            // Batched insert for all data rows
+            if (dataRows.Count > 0)
+            {
+                BatchedInsertCsvToPostgres(headers, dataRows, tableName, columnTypes);
             }
         }
     }
+
+
+
+    private void BatchedInsertCsvToPostgres(string[] headers, List<string[]> rows, string tableName, List<string> columnTypes, int batchSize = 2000)
+    {
+        using var connection = new Npgsql.NpgsqlConnection(GetConnectionString());
+        connection.Open();
+
+        var columnNames = headers.Select(SanitizeColumnName).ToArray();
+
+        for (int i = 0; i < rows.Count; i += batchSize)
+        {
+            var batchRows = rows.Skip(i).Take(batchSize).ToList();
+            var valuePlaceholders = new List<string>();
+            var parameters = new List<Npgsql.NpgsqlParameter>();
+
+            for (int r = 0; r < batchRows.Count; r++)
+            {
+                var row = batchRows[r];
+                var rowPlaceholders = new List<string>();
+                bool rowIsValid = true;
+
+                for (int c = 0; c < columnNames.Length; c++)
+                {
+                    var paramName = $"@p_{r}_{c}";
+                    object value = DBNull.Value;
+
+                    if (row.Length > c && !string.IsNullOrWhiteSpace(row[c]))
+                    {
+                        var type = columnTypes[c];
+                        var cell = row[c].Trim();
+                        try
+                        {
+                            value = type switch
+                            {
+                                "DOUBLE PRECISION" => double.TryParse(cell, out var d) ? d : throw new Exception(),
+                                "BOOLEAN" => bool.TryParse(cell, out var b) ? b : throw new Exception(),
+                                "DATE" => DateTime.TryParse(cell, out var dt) ? dt.Date : throw new Exception(),
+                                "TIMESTAMP" => DateTime.TryParse(cell, out var ts) ? ts : throw new Exception(),
+                                _ => cell
+                            };
+                        }
+                        catch
+                        {
+                            rowIsValid = false;
+                            break; // Skip this row if any value is invalid
+                        }
+                    }
+                    rowPlaceholders.Add(paramName);
+                    parameters.Add(new Npgsql.NpgsqlParameter(paramName, value));
+                }
+
+                if (rowIsValid)
+                    valuePlaceholders.Add($"({string.Join(", ", rowPlaceholders)})");
+                else
+                    parameters.RemoveRange(parameters.Count - rowPlaceholders.Count, rowPlaceholders.Count); // Remove params for skipped row
+            }
+
+            if (valuePlaceholders.Count == 0)
+                continue; // No valid rows in this batch
+
+            var sql = $"INSERT INTO {tableName} ({string.Join(", ", columnNames)}) VALUES {string.Join(", ", valuePlaceholders)};";
+            using var cmd = new Npgsql.NpgsqlCommand(sql, connection);
+            cmd.Parameters.AddRange(parameters.ToArray());
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+
+
 
 
 
@@ -337,7 +409,7 @@
         return "TEXT";
     }
 
-    private void CreatePostgresTable(string[] headers, string tableName, List<string[]> sampleRows)
+    private List<string> CreatePostgresTable(string[] headers, string tableName, List<string[]> sampleRows)
     {
         // Infer types for each column
         var columnTypes = new List<string>();
@@ -364,6 +436,7 @@
         {
             createCommand.ExecuteNonQuery();
         }
+        return columnTypes;
     }
 
 
