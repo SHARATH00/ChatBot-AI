@@ -12,7 +12,7 @@
     <div class="card shadow-sm mb-4 border-0">
         <div class="card-body">
             <h5 class="card-title">Upload CSV Files</h5>
-            <p class="card-text text-secondary">Select one or more CSV files to create database tables.</p>
+            <p class="card-text text-secondary">Select CSV or PDF file.</p>
             <InputFile OnChange="LoadFiles" multiple class="form-control mb-3" accept=".csv,.pdf" />
             <button class="btn btn-primary"
                     @onclick="CreateDatabaseTablesAsync"
