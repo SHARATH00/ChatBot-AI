@@ -38,23 +38,14 @@
     <div class="card shadow-sm mb-4 border-0">
         <div class="card-body">
             <h5 class="card-title">Ask a Question</h5>
-            <p class="card-text text-secondary">Type your question below and get an answer based on your selected data source.</p>
-
-            <div class="mb-3">
-                <label class="form-label">Select Data Source:</label>
-                <select class="form-select" @bind="SelectedDataSource">
-                    <option value="csv">Database (CSV)</option>
-                    @foreach (var pdf in PdfTexts.Keys)
-                    {
-                        <option value="@pdf">PDF: @pdf</option>
-                    }
-                </select>
-            </div>
-
+            <p class="card-text text-secondary">
+                Type your question below and get an answer based on your uploaded file type.
+            </p>
             <textarea id="textBox" class="form-control mb-3" @bind="InputText" placeholder="Type your question..." rows="2"></textarea>
-            <button class="btn btn-success" @onclick="AskUnifiedQuestion">Ask</button>
+            <button class="btn btn-success" @onclick="AskAutoDataSourceQuestion">Ask</button>
         </div>
     </div>
+
 
 
 
@@ -127,6 +118,7 @@
     private bool ShowSuccessMessage { get; set; } = false;
 
     private bool IsProcessing { get; set; } = false;
+    private bool PdfUploaded { get; set; } = false;
 
     private bool IsPdfAnswer { get; set; } = false;
     private string CurrentPdfFileName { get; set; } = string.Empty;
@@ -185,7 +177,7 @@
                 var csvContent = await reader.ReadToEndAsync();
                 ProcessCsvFile(csvContent, sanitizedFileName);
             }
-            SuccessMessage = "Tables created successfully!";
+            SuccessMessage = "File Processed successfully!";
             ShowSuccessMessage = true;
             StateHasChanged();
         }
@@ -407,21 +399,24 @@
     }
 
 
-    private async Task AskUnifiedQuestion()
+    private async Task AskAutoDataSourceQuestion()
     {
         if (string.IsNullOrWhiteSpace(InputText))
             return;
 
-        if (SelectedDataSource == "csv")
+        // Find the most recently uploaded file
+        var lastFile = UploadedFiles.LastOrDefault();
+        if (lastFile != null && lastFile.Name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase))
         {
-            await SubmitQuestion();
+            PdfQuestion = InputText;
+            await AskPdfQuestion(lastFile.Name);
         }
         else
         {
-            PdfQuestion = InputText;
-            await AskPdfQuestion(SelectedDataSource);
+            await SubmitQuestion();
         }
     }
+
 
 
     private async Task SubmitQuestion()
