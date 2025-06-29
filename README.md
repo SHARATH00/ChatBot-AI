@@ -14,8 +14,8 @@ The app is styled with Bootstrap and custom CSS for a modern, colorful, and resp
 
 ## Demo Recordings
 
-- [Demo 1](https://drive.google.com/file/d/1VHep8kTxPCzQhYwOh2xQ_awx0be8PhtL/view?usp=drive_web)
-- [Demo 2](https://drive.google.com/file/d/1ucK10rGieSB8Q5OzDfiUu6Ucksoig9QK/view?usp=drive_web)
+- [Demo - CSV file processing](https://drive.google.com/file/d/1VHep8kTxPCzQhYwOh2xQ_awx0be8PhtL/view?usp=drive_web)
+- [Demo - PDF file processing](https://drive.google.com/file/d/1ucK10rGieSB8Q5OzDfiUu6Ucksoig9QK/view?usp=drive_web)
 
 ---
 
