@@ -1,17 +1,18 @@
 ﻿@page "/"
 @rendermode InteractiveServer
+@inject IConfiguration Configuration
 
 <PageTitle>Home</PageTitle>
 
 <div class="container mt-5">
     <div class="ai-header text-center mb-4 shadow-sm">
-        AI ChatBot
+        AI ChatBot - Text To SQL
     </div>
 
     <!-- File Upload Section -->
     <div class="card shadow-sm mb-4 border-0">
         <div class="card-body">
-            <h5 class="card-title">Upload CSV Files</h5>
+            <h5 class="card-title">Upload CSV/PDF Files</h5>
             <p class="card-text text-secondary">Select CSV or PDF file.</p>
             <InputFile OnChange="LoadFiles" multiple class="form-control mb-3" accept=".csv,.pdf" />
             <button class="btn btn-primary"
@@ -56,11 +57,9 @@
             <div class="card-body">
                 @if (IsPdfAnswer)
                 {
-                    @if (IsPdfAnswer)
-                    {
                         <h5 class="card-title">PDF Answer (@CurrentPdfFileName)</h5>
                         <textarea class="form-control mb-2" rows="4" readonly>@PdfAnswer</textarea>
-                    }
+                
 
                 }
                 else
@@ -108,7 +107,7 @@
 @code {
 
     private string InputText = null;
-    private IBrowserFile? UploadedFile;
+   
     private List<IBrowserFile> UploadedFiles = new();
     private string? SelectedFileName;
     private string? SuccessMessage;
@@ -119,9 +118,6 @@
 
     private bool IsPdfAnswer { get; set; } = false;
     private string CurrentPdfFileName { get; set; } = string.Empty;
-
-    private string SelectedDataSource { get; set; } = "csv";
-
 
     private bool ShowQueryResult { get; set; } = false;
 
@@ -137,7 +133,9 @@
 
 
 
-
+    /// <summary>
+    /// Handles file selection from the UI. Loads PDF text for preview and stores uploaded files.
+    /// </summary>
     private async Task LoadFiles(InputFileChangeEventArgs e)
     {
         UploadedFiles = e.GetMultipleFiles().ToList();
@@ -157,7 +155,9 @@
         }
     }
 
-
+    /// <summary>
+    /// Processes all uploaded CSV files: creates tables and inserts data in bulk.
+    /// </summary>
     private async Task CreateDatabaseTablesAsync()
     {
         IsProcessing = true;
@@ -201,6 +201,10 @@
         }
     }
 
+
+    /// <summary>
+    /// Asks a question about a specific PDF file and updates the UI with the answer.
+    /// </summary>
     private async Task AskPdfQuestion(string pdfFileName)
     {
         var pdfText = PdfTexts[pdfFileName];
@@ -213,6 +217,9 @@
     }
 
 
+    /// <summary>
+    /// Sends a prompt to OpenAI for PDF Q&A and returns the answer.
+    /// </summary>
     private async Task<string> QueryOpenAiPdfAsync(string prompt)
     {
         var apiKey = Configuration["OpenAI:ApiKey"];
@@ -256,6 +263,9 @@
     }
 
 
+    /// <summary>
+    /// Processes a CSV file: infers column types, creates the table, and inserts data in batches.
+    /// </summary>
     private void ProcessCsvFile(string csvContent, string tableName)
     {
         var lines = csvContent.Split('\n');
@@ -292,7 +302,9 @@
     }
 
 
-
+    /// <summary>
+    /// Inserts CSV data into PostgreSQL in batches, skipping incompatible rows.
+    /// </summary>
     private void BatchedInsertCsvToPostgres(string[] headers, List<string[]> rows, string tableName, List<string> columnTypes, int batchSize = 2000)
     {
         using var connection = new Npgsql.NpgsqlConnection(GetConnectionString());
@@ -359,10 +371,9 @@
     }
 
 
-
-
-
-
+    /// <summary>
+    /// Sanitizes a column name to be PostgreSQL-compliant (letters, numbers, underscores).
+    /// </summary>
     private string SanitizeColumnName(string columnName)
     {
         // Remove invalid characters, allow only letters, numbers, and underscores
@@ -385,6 +396,10 @@
         return sanitized;
     }
 
+
+    /// <summary>
+    /// Infers the PostgreSQL data type for a column based on sample values.
+    /// </summary>
     private string InferPostgresType(List<string> samples)
     {
         bool isInt = true, isDouble = true, isBool = true, isDate = true, isTimestamp = true;
@@ -409,6 +424,11 @@
         return "TEXT";
     }
 
+
+
+    /// <summary>
+    /// Creates a PostgreSQL table with inferred column types from the CSV header and sample rows.
+    /// </summary>
     private List<string> CreatePostgresTable(string[] headers, string tableName, List<string[]> sampleRows)
     {
         // Infer types for each column
@@ -439,23 +459,9 @@
         return columnTypes;
     }
 
-
-
-    private void InsertRowIntoPostgres(string[] headers, string[] row, string tableName)
-    {
-        //var tableName = SelectedFileName ?? "UploadedData";
-        var columns = string.Join(", ", headers.Select(h => SanitizeColumnName(h)));
-        var values = string.Join(", ", row.Select(r => $"'{r.Trim()}'"));
-
-        var query = $"INSERT INTO {tableName} ({columns}) VALUES ({values});";
-
-        using var connection = new Npgsql.NpgsqlConnection(GetConnectionString());
-        connection.Open();
-
-        using var command = new Npgsql.NpgsqlCommand(query, connection);
-        command.ExecuteNonQuery();
-    }
-
+    /// <summary>
+    /// Sanitizes a file name to be used as a PostgreSQL table name.
+    /// </summary>
     private string SanitizeFileName(string fileName)
     {
         // Remove special characters and replace spaces with underscores
@@ -464,7 +470,7 @@
     }
 
 
-    @inject IConfiguration Configuration
+
 
     private string GetConnectionString()
     {
@@ -472,6 +478,10 @@
     }
 
 
+
+    /// <summary>
+    /// Handles the "Ask" button: routes the question to PDF or SQL depending on the last uploaded file.
+    /// </summary>
     private async Task AskAutoDataSourceQuestion()
     {
         if (string.IsNullOrWhiteSpace(InputText))
@@ -491,7 +501,9 @@
     }
 
 
-
+    /// <summary>
+    /// Submits a natural language question to OpenAI, executes the resulting SQL, and updates the UI.
+    /// </summary>
     private async Task SubmitQuestion()
     {
         if (!string.IsNullOrWhiteSpace(InputText))
@@ -510,7 +522,9 @@
     }
 
 
-
+    /// <summary>
+    /// Sends a natural language question and table info to OpenAI and returns the generated SQL query.
+    /// </summary>
     private async Task<string> QueryOpenAiAsync(string nlQuery, string tableInfo)
     {
         var apiKey = Configuration["OpenAI:ApiKey"];
@@ -569,8 +583,6 @@
 
 
 
-
-
     /*private string QueryGptNeo(string nlQuery, string tableInfo)
     {
         // Construct the prompt
@@ -611,6 +623,10 @@
     }*/
 
 
+
+    /// <summary>
+    /// Executes a SQL query against PostgreSQL and loads the results into TableHeaders and TableData.
+    /// </summary>
     private void QueryPostgres(string query)
     { 
         SqlQuery = query;
@@ -639,7 +655,9 @@
 
 
 
-   
+    /// <summary>
+    /// Generates a string describing all tables and their columns in the PostgreSQL database.
+    /// </summary>
     private string GenerateTableInfo()
     {
         // Generate table information dynamically
