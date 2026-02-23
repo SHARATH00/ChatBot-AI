@@ -13,6 +13,9 @@ builder.Services.Configure<FormOptions>(options =>
 });
 
 
+var ironPdfLicense = builder.Configuration["IronPdf:LicenseKey"];
+IronPdf.License.LicenseKey = ironPdfLicense;
+
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
