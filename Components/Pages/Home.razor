@@ -1,13 +1,6 @@
-﻿@using IronPdf
-@using System.Data
-@using Microsoft.JSInterop
-@inject IJSRuntime JS
-
-@page "/"
+﻿@page "/"
 @rendermode InteractiveServer
 @inject IConfiguration Configuration
-
-
 
 <PageTitle>Home</PageTitle>
 
@@ -75,10 +68,8 @@
                     <pre class="bg-light p-3 rounded">@SqlQuery</pre>
 
                     <h5 class="card-title mt-4">Table Data</h5>
-                    <button class="btn btn-secondary mb-3" @onclick="IronPrint">Iron Print</button>
                     @if (TableData != null && TableData.Any())
                     {
-                        
                         <table class="table table-bordered table-striped">
                             <thead class="table-dark">
                                 <tr>
@@ -115,8 +106,6 @@
 
 @code {
 
-   
-		
     private string InputText = null;
    
     private List<IBrowserFile> UploadedFiles = new();
@@ -708,88 +697,6 @@
 
         return string.Join("\n", tableInfo);
     }
-
-        private async Task IronPrint()
-        {
-                    if (TableData == null || !TableData.Any())
-                        return;
-
-                    try
-                    {
-
-                        // Set the IronPdf license key
-                        IronPdf.License.LicenseKey = "IRONSUITE.SHARATH.REDDY.DOPATHI.GMAIL.COM.27077-E3F80CDD29-AD6YTHG-PNXFDP7CL5BJ-3WCRWOIXWRAV-JW7SLN7IOYVY-JUPJCDLFHIMA-6TRO32736KT5-TFLEZCQWCOVB-6YNONP-TLCCBLXT5YWQUA-DEPLOYMENT.TRIAL-T5T4JI.TRIAL.EXPIRES.24.MAR.2026";
-
-                        var html = BuildHtmlReport();
-
-                        // 🚀 Move IronPDF to background thread
-                        var pdf = await Task.Run(() =>
-                        {
-                            var renderer = new ChromePdfRenderer();
-
-                            renderer.RenderingOptions.PaperSize = IronPdf.Rendering.PdfPaperSize.A4;
-                            renderer.RenderingOptions.MarginTop = 20;
-                            renderer.RenderingOptions.MarginBottom = 20;
-                            renderer.RenderingOptions.MarginLeft = 15;
-                            renderer.RenderingOptions.MarginRight = 15;
-
-                            return renderer.RenderHtmlAsPdf(html);
-                        });
-
-                        var fileName = $"QueryReport_{DateTime.Now:yyyyMMddHHmmss}.pdf";
-
-                        using var streamRef = new DotNetStreamReference(stream: pdf.Stream);
-
-                         await JS.InvokeVoidAsync("downloadPdfFile", fileName, streamRef);
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine("IRONPDF ERROR:");
-                        Console.WriteLine(ex.ToString());
-                    }
-        }
-
-        private string BuildHtmlReport()
-        {
-            var html = @"
-            <html>
-            <head>
-                <style>
-                    body { font-family: Arial, sans-serif; }
-                    h1 { color: #2c3e50; }
-                    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
-                    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-                    th { background-color: #f2f2f2; }
-                    .question { margin-bottom: 15px; font-size: 14px; }
-                </style>
-            </head>
-            <body>";
-
-            html += $"<h1>Query Report</h1>";
-            html += $"<div class='question'><strong>Question:</strong> {InputText}</div>";
-            html += "<hr/>";
-
-            html += "<table><thead><tr>";
-
-            foreach (var header in TableHeaders)
-                html += $"<th>{header}</th>";
-
-            html += "</tr></thead><tbody>";
-
-            foreach (var row in TableData)
-            {
-                html += "<tr>";
-                foreach (var cell in row)
-                    html += $"<td>{cell}</td>";
-                html += "</tr>";
-            }
-
-            html += "</tbody></table></body></html>";
-
-            return html;
-        }
-
-
 
 
 
